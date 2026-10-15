@@ -7,6 +7,7 @@ import shutil
 import sys
 import sysconfig
 from typing import *
+from typing_extensions import Unpack
 
 from .core import *
 from .threadblock import *
@@ -205,8 +206,20 @@ class Handle:
             self.remain_op()
 
 
+class _GraphCallOptions(TypedDict, total=False):
+    inputs: list[torch.Tensor]
+    verbose: bool
+    stream: torch.cuda.Stream | None
+    target_cc: int
+    num_warp_groups: int
+    pipeline_stages: int
+    profiling: bool
+    enable_online_softmax: bool
+    file_id: int
+
+
 class KNGraph:
-    def __init__(self, graph):
+    def __init__(self, graph: CyKNGraph):
         self.cygraph = graph
 
         self._is_compiled = False
@@ -218,24 +231,23 @@ class KNGraph:
         self.backend = "cuda"
 
     def new_input(
-        self, dims: tuple, strides: tuple = None, dtype: dtype = float16
+        self,
+        dims: tuple[int, ...],
+        strides: tuple[int, ...] | None = None,
+        dtype: dtype = float16,
     ) -> DTensor:
-        # use the default strided layout if strides = None
         if strides is None:
             total_elements = 1
-            strides = []
+            reversed_strides: list[int] = []
             for d in reversed(dims):
-                strides.append(total_elements)
+                reversed_strides.append(total_elements)
                 total_elements *= d
-            strides = reversed(strides)
+            strides = tuple(reversed(reversed_strides))
         else:
             assert len(dims) == len(strides)
-            # assert check_stride(dims, strides, "row-major") | check_stride(
-            #     dims, strides, "column-major"
-            # )
-        return self.cygraph.new_input(dims, tuple(strides), dtype)
+        return self.cygraph.new_input(dims, strides, dtype)
 
-    def mark_output(self, A: DTensor, strides: tuple = None):
+    def mark_output(self, A: DTensor, strides: tuple[int, ...] | None = None) -> None:
         return self.cygraph.mark_output(A, strides)
 
     def matmul(self, A: DTensor, B: DTensor) -> DTensor:
@@ -277,7 +289,7 @@ class KNGraph:
     def pow(self, A: DTensor, B: DTensor):
         return self.cygraph.pow(A, B)
 
-    def rms_norm(self, A: DTensor, normalized_shape: tuple):
+    def rms_norm(self, A: DTensor, normalized_shape: tuple[int, ...]) -> DTensor:
         return self.cygraph.rms_norm(A, normalized_shape)
 
     def customized(self, inputs: list[DTensor], bgraph: TBGraph) -> list[DTensor]:
@@ -294,7 +306,7 @@ class KNGraph:
         assert self._is_compiled, "Should check error message after compilation"
         return self._error_message
 
-    def __call__(self, **kwargs):
+    def __call__(self, **kwargs: Unpack[_GraphCallOptions]) -> list[torch.Tensor] | None:
         if self.backend == "cuda":
             return self.cuda_call(**kwargs)
         elif self.backend == "nki":
@@ -302,7 +314,7 @@ class KNGraph:
         elif self.backend == "triton":
             return self.triton_call(**kwargs)
 
-    def triton_call(self, **kwargs):
+    def triton_call(self, **kwargs: Unpack[_GraphCallOptions]) -> list[torch.Tensor]:
         assert self.run is not None, "The graph is not compiled to triton yet."
         input_tensors = kwargs.get("inputs", [])
         verbose = kwargs.get("verbose", False)
@@ -325,7 +337,7 @@ class KNGraph:
         self.run(*input_tensors, *output_tensors)
         return output_tensors
 
-    def cuda_call(self, **kwargs):
+    def cuda_call(self, **kwargs: Unpack[_GraphCallOptions]) -> list[torch.Tensor] | None:
         results = self.compile(**kwargs)
 
         # directly return if the Transpiler cannot generate valid CUDA kernels
@@ -540,16 +552,38 @@ class KNGraph:
 
         # so_path = './test.cpython-38-x86_64-linux-gnu.so'
 
+    @overload
     def superoptimize(
         self,
-        imaps: list = None,
-        omaps: list = None,
-        griddims: list = None,
-        blockdims: list = None,
-        fmaps: list = None,
-        franges: list = None,
+        imaps: list[tuple[int, int, int]] | None = None,
+        omaps: list[tuple[int, int, int]] | None = None,
+        griddims: list[tuple[int, int, int]] | None = None,
+        blockdims: list[tuple[int, int, int]] | None = None,
+        fmaps: list[int] | None = None,
+        franges: list[int] | None = None,
         verbose: bool = False,
-        config: str = None,
+        config: str | None = None,
+        backend: Literal["cuda", "triton"] = "cuda",
+        warmup_iters: int = 16,
+        profile_iters: int = 1000,
+        use_graph_dataset: bool = True,
+        use_cached_graphs: bool = True,
+        save_codes: bool = False,
+        is_formal_verified: bool = False,
+        cache_dir: str | os.PathLike[str] | None = None,
+    ) -> "KNGraph | None": ...
+
+    @overload
+    def superoptimize(
+        self,
+        imaps: list[tuple[int, int, int]] | None = None,
+        omaps: list[tuple[int, int, int]] | None = None,
+        griddims: list[tuple[int, int, int]] | None = None,
+        blockdims: list[tuple[int, int, int]] | None = None,
+        fmaps: list[int] | None = None,
+        franges: list[int] | None = None,
+        verbose: bool = False,
+        config: str | None = None,
         backend: str = "cuda",
         warmup_iters: int = 16,
         profile_iters: int = 1000,
@@ -557,7 +591,34 @@ class KNGraph:
         use_cached_graphs: bool = True,
         save_codes: bool = False,
         is_formal_verified: bool = False,
-    ):
+        cache_dir: str | os.PathLike[str] | None = None,
+    ) -> "KNGraph | list[KNGraph] | None": ...
+
+    def superoptimize(
+        self,
+        imaps: list[tuple[int, int, int]] | None = None,
+        omaps: list[tuple[int, int, int]] | None = None,
+        griddims: list[tuple[int, int, int]] | None = None,
+        blockdims: list[tuple[int, int, int]] | None = None,
+        fmaps: list[int] | None = None,
+        franges: list[int] | None = None,
+        verbose: bool = False,
+        config: str | None = None,
+        backend: str = "cuda",
+        warmup_iters: int = 16,
+        profile_iters: int = 1000,
+        use_graph_dataset: bool = True,
+        use_cached_graphs: bool = True,
+        save_codes: bool = False,
+        is_formal_verified: bool = False,
+        cache_dir: str | os.PathLike[str] | None = None,
+    ) -> "KNGraph | list[KNGraph] | None":
+        """Search and profile graphs, optionally reusing search checkpoints.
+
+        Cache directory precedence: cache_dir, MIRAGE_CACHE_DIR, then
+        $XDG_CACHE_HOME/mirage (or ~/.cache/mirage). Directories are created
+        only when search caching is enabled and the graph dataset misses.
+        """
         if use_graph_dataset:
             cached_graph = graph_dataset.find(
                 self.cygraph,
@@ -574,8 +635,17 @@ class KNGraph:
         if use_cached_graphs:
             # Pre-fp2 caches may contain candidates accepted by concurrent,
             # unsynchronized GPU fingerprint checks. Do not reuse those graphs.
-            previous_checkpoint = "mirage_cached_mugraphs_fp2_{:x}.json".format(
-                self.cygraph.get_owner_independent_hash()
+            if cache_dir is None:
+                cache_dir = os.environ.get("MIRAGE_CACHE_DIR") or os.path.join(
+                    os.environ.get("XDG_CACHE_HOME") or "~/.cache", "mirage"
+                )
+            cache_dir = os.path.abspath(os.path.expanduser(os.fspath(cache_dir)))
+            os.makedirs(cache_dir, exist_ok=True)
+            previous_checkpoint = os.path.join(
+                cache_dir,
+                "mirage_cached_mugraphs_fp2_{:x}.json".format(
+                    self.cygraph.get_owner_independent_hash()
+                ),
             )
         else:
             previous_checkpoint = None

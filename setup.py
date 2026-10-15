@@ -313,7 +313,7 @@ with copy_include() as copied:
         install_requires=requirements,
         packages=find_packages(where="python"),
         package_dir={"": "python"},
-        package_data={"mirage": ["lib/*.so"]},
+        package_data={"mirage": ["lib/*.so", "*.pyi"]},
         cmdclass={"build_py": build_py},
         url="https://github.com/mirage-project/mirage",
         ext_modules=config_cython(),

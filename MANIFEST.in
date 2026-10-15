@@ -25,3 +25,4 @@ prune deps/json/.reuse
 prune deps/json/docs
 prune deps/json/tests
 prune deps/json/tools
+recursive-include python/mirage *.pyi
