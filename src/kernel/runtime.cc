@@ -16,7 +16,7 @@
 #include "mirage/kernel/annotated_graph.h"
 #include "mirage/kernel/graph.h"
 #include "mirage/kernel/task_register.h"
-#include "mirage/transpiler/utils.h"
+#include "mirage/utils/codegen.h"
 #include "mirage/utils/json_utils.h"
 #include <queue>
 
@@ -1039,8 +1039,8 @@ TaskGraphResult print_task_graph(
     std::map<mirage::type::GuidType, IODesc> const &io_configs,
     bool use_json_format) {
   using mirage::runtime::IODesc;
-  mirage::transpiler::CodeKeeper code;
-  mirage::transpiler::CodeKeeper tgbody;
+  mirage::codegen::CodeKeeper code;
+  mirage::codegen::CodeKeeper tgbody;
   tgbody.inc_indent();
   code.e("#include \"persistent_kernel.cuh\"");
   if (use_json_format) {

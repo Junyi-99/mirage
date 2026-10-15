@@ -113,19 +113,28 @@ struct ProfilerEntry {
 
 // #define PROFILER_PARAMS_DECL uint64_t *profiler_buffer;
 
-#define PROFILER_INIT(                                                         \
-    profiler_buffer, group_idx, num_groups, write_thread_predicate)            \
-  if (tb::get_block_idx() == 0 && tb::get_thread_idx() == 0) {                 \
-    entry.nblocks = tb::get_num_blocks();                                      \
-    entry.ngroups = num_groups;                                                \
-    profiler_buffer[0] = entry.raw;                                            \
-  }                                                                            \
-  profiler_write_ptr =                                                         \
-      profiler_buffer + 1 + tb::get_block_idx() * num_groups + group_idx;      \
-  profiler_write_stride = tb::get_num_blocks() * num_groups;                   \
-  profiler_entry_tag_base =                                                    \
-      tb::encode_tag(tb::get_block_idx() * num_groups + group_idx, 0, 0);      \
+// Logical block IDs let worker and scheduler grids share one trace buffer.
+// The two grids must use the same total block count and disjoint IDs.
+#define PROFILER_INIT_LAYOUT(profiler_buffer, group_idx, num_groups,           \
+                             write_thread_predicate, logical_block,          \
+                             total_blocks)                                   \
+  if ((logical_block) == 0 && tb::get_thread_idx() == 0) {                     \
+    entry.nblocks = (total_blocks);                                           \
+    entry.ngroups = num_groups;                                              \
+    profiler_buffer[0] = entry.raw;                                           \
+  }                                                                          \
+  profiler_write_ptr =                                                       \
+      profiler_buffer + 1 + (logical_block) * num_groups + group_idx;         \
+  profiler_write_stride = (total_blocks) * num_groups;                        \
+  profiler_entry_tag_base =                                                  \
+      tb::encode_tag((logical_block) * num_groups + group_idx, 0, 0);         \
   profiler_write_thread_predicate = write_thread_predicate;
+
+#define PROFILER_INIT(profiler_buffer, group_idx, num_groups,                 \
+                      write_thread_predicate)                                \
+  PROFILER_INIT_LAYOUT(profiler_buffer, group_idx, num_groups,                 \
+                       write_thread_predicate, tb::get_block_idx(),          \
+                       tb::get_num_blocks())
 
 #define PROFILER_EVENT_START(event, event_no)                                  \
   if (profiler_write_thread_predicate) {                                       \

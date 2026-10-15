@@ -17,11 +17,9 @@ import shutil
 from os import path
 from pathlib import Path
 import sys
-import sysconfig
-from setuptools import find_packages, setup, Command
+from setuptools import find_packages, setup
 from contextlib import contextmanager
 import subprocess
-import re
 
 # need to use distutils.core for correct placement of cython dll
 if "--inplace" in sys.argv:
@@ -31,7 +29,6 @@ else:
     from setuptools import setup
     from setuptools.extension import Extension
 
-import z3
 
 nvcc_path = shutil.which("nvcc")
 if nvcc_path:
@@ -47,48 +44,18 @@ cuda_library_dirs = [
     os.path.join(cuda_home, "lib64", "stubs"),
 ]
 
-z3_path = path.dirname(z3.__file__)
-
 # Use version.py to get package version
 version_file = os.path.join(os.path.dirname(__file__), "python/mirage/version.py")
 with open(version_file, "r") as f:
     exec(f.read())  # This will define __version__
 
-def get_backend_macros(config_file):
-    flags = {
-        "USE_CUDA":   None,
-        "USE_NKI":    None,
-    }
-
-    pattern = re.compile(r'^\s*set\s*\(\s*(USE_CUDA|USE_NKI)\s+(ON|OFF)\s*\)', re.IGNORECASE)
-    
-    with open(config_file, 'r') as f:
-        for line in f:
-            match = pattern.match(line)
-            if match:
-                var, val = match.groups()
-                flags[var] = (val.upper() == "ON")
-    
-    macros = []
-    if flags.get("USE_CUDA"):
-        macros.append(("MIRAGE_BACKEND_USE_CUDA", None))
-        macros.append(("MIRAGE_FINGERPRINT_USE_CUDA", None))
-    elif flags.get("USE_NKI"):
-        macros.append(("MIRAGE_BACKEND_USE_NKI", None))
-        macros.append(("MIRAGE_FINGERPRINT_USE_CPU", None))
-    else:
-        raise KeyError("Please select either USE_CUDA or USE_NKI in config.cmake file")
-    return macros
-
 def config_cython():
-    sys_cflags = sysconfig.get_config_var("CFLAGS")
     try:
         from Cython.Build import cythonize
 
         ret = []
         mirage_path = ''
-        config_path = path.join(mirage_path, "config.cmake")
-        macros = get_backend_macros(config_path)
+        macros = [("MIRAGE_BACKEND_USE_CUDA", None), ("MIRAGE_FINGERPRINT_USE_CUDA", None)]
         cython_path = path.join(mirage_path, "python/mirage/_cython")
         for fn in os.listdir(cython_path):
             if not fn.endswith(".pyx"):
@@ -102,9 +69,6 @@ def config_cython():
                         path.join(mirage_path, "deps", "json", "include"),
                         path.join(mirage_path, "deps", "cutlass", "include"),
                         path.join(mirage_path, "deps", "cutlass", "tools", "util", "include"),
-                        path.join(mirage_path, "build", "abstract_subexpr", "release"),
-                        path.join(mirage_path, "build", "formal_verifier", "release"),
-                        path.join(z3_path, "include"),
                         cuda_include_dir,
                     ],
                     libraries=[
@@ -112,18 +76,13 @@ def config_cython():
                         "cudadevrt",
                         "cudart_static",
                         "cudart",
+                        "cublas",
                         "cuda",
-                        "z3",
                         "gomp",
                         "rt",
-                        "abstract_subexpr",
-                        "formal_verifier",
                     ],
                     library_dirs=[
                         path.join(mirage_path, "build"),
-                        path.join(z3_path, "lib"),
-                        path.join(mirage_path, "build", "abstract_subexpr", "release"),
-                        path.join(mirage_path, "build", "formal_verifier", "release"),
                     ]
                     + cuda_library_dirs,
                     define_macros=macros,
@@ -132,9 +91,6 @@ def config_cython():
                         "-fPIC",
                         "-fopenmp",
                         "-lrt",
-                        f"-Wl,-rpath,{path.join('$ORIGIN', 'lib')}",
-                        f"-Wl,-rpath,{path.join('$ORIGIN', '..', '..', 'build', 'abstract_subexpr', 'release')}",
-                        f"-Wl,-rpath,{path.join('$ORIGIN', '..', '..', 'build', 'formal_verifier', 'release')}",
                     ],
                     language="c++",
                 )
@@ -145,58 +101,12 @@ def config_cython():
         raise SystemExit(1)
     
 if os.environ.get("MIRAGE_SKIP_NATIVE_BUILD") != "1":
-    # Install Rust if not yet available
-    try:
-        # Attempt to run a Rust command to check if Rust is installed
-        subprocess.check_output(['cargo', '--version'])
-    except FileNotFoundError:
-        print("Rust/Cargo not found, installing it...")
-        # Rust is not installed, so install it using rustup
-        try:
-            subprocess.run("curl https://sh.rustup.rs -sSf | sh -s -- -y", shell=True, check=True)
-            print("Rust and Cargo installed successfully.")
-        except subprocess.CalledProcessError as e:
-            print(f"Error: {e}")
-        # Add the cargo binary directory to the PATH
-        os.environ["PATH"] = f"{os.path.join(os.environ.get('HOME', '/root'), '.cargo', 'bin')}:{os.environ.get('PATH', '')}"
-
-    mirage_path = path.dirname(__file__)
-    # z3_path = os.path.join(mirage_path, 'deps', 'z3', 'build')
-    # os.environ['Z3_DIR'] = z3_path
-    if mirage_path == '':
-        mirage_path = '.'
-
-    try:
-        subprocess.check_output(['cargo', 'build', '--release', '--target-dir', '../../../../build/abstract_subexpr'], cwd='src/search/abstract_expr/abstract_subexpr')
-    except subprocess.CalledProcessError as e:
-        print("Failed to build abstract_subexpr Rust library, building it ...")
-        try:
-            subprocess.run(['cargo', 'build', '--release', '--target-dir', '../../../../build/abstract_subexpr'], cwd='src/search/abstract_expr/abstract_subexpr', check=True)
-            print("Abstract_subexpr Rust library built successfully.")
-        except subprocess.CalledProcessError as e:
-            print("Failed to build abstract_subexpr Rust library.")
-        os.environ['ABSTRACT_SUBEXPR_LIB'] = os.path.join(mirage_path,'build', 'abstract_subexpr', 'release', 'libabstract_subexpr.so')
-
-    try:
-        subprocess.check_output(['cargo', 'build', '--release', '--target-dir', '../../../../build/formal_verifier'], cwd='src/search/verification/formal_verifier_equiv')
-    except subprocess.CalledProcessError as e:
-        print("Failed to build formal_verifier Rust library, building it ...")
-        try:
-            subprocess.run(['cargo', 'build', '--release', '--target-dir', '../../../../build/formal_verifier'], cwd='src/search/verification/formal_verifier_equiv', check=True)
-            print("formal_verifier Rust library built successfully.")
-        except subprocess.CalledProcessError as e:
-            print("Failed to build formal_verifier Rust library.")
-        os.environ['FORMAL_VERIFIER_LIB'] = os.path.join(mirage_path,'build', 'formal_verifier', 'release', 'libformal_verifier.so')
-
-
     # build Mirage runtime library
     try:
         os.environ["CUDACXX"] = nvcc_path if nvcc_path else os.path.join(
             cuda_home, "bin", "nvcc"
         )
         mirage_path = path.dirname(__file__)
-        # z3_path = os.path.join(mirage_path, 'deps', 'z3', 'build')
-        # os.environ['Z3_DIR'] = z3_path
         if mirage_path == "":
             mirage_path = "."
         os.makedirs(mirage_path, exist_ok=True)
@@ -216,12 +126,6 @@ if os.environ.get("MIRAGE_SKIP_NATIVE_BUILD") != "1":
                 "cmake",
                 "..",
                 "-DCMAKE_BUILD_TYPE=" + os.environ.get("CMAKE_BUILD_TYPE", "Release"),
-                "-DZ3_CXX_INCLUDE_DIRS=" + z3_path + "/include/",
-                "-DZ3_LIBRARIES=" + path.join(z3_path, "lib", "libz3.so"),
-                '-DABSTRACT_SUBEXPR_LIB=' + path.join(mirage_path, 'build', 'abstract_subexpr', 'release'),
-                '-DABSTRACT_SUBEXPR_LIBRARIES=' + path.join(mirage_path, 'build', 'abstract_subexpr', 'release', 'libabstract_subexpr.so'),
-                '-DFORMAL_VERIFIER_LIB=' + path.join(mirage_path, 'build', 'formal_verifier', 'release'),
-                '-DFORMAL_VERIFIER_LIBRARIES=' + path.join(mirage_path, 'build', 'formal_verifier', 'release', 'libformal_verifier.so'),
                 "-DCMAKE_C_COMPILER=" + os.environ["CC"],
                 "-DCMAKE_CXX_COMPILER=" + os.environ["CXX"],
             ],
@@ -237,23 +141,6 @@ else:
     # Pre-built: just set mirage_path for config_cython()
     mirage_path = path.dirname(__file__) or "."
 
-from setuptools.command.build_py import build_py as _build_py
-
-class build_py(_build_py):
-    """Copy native .so files into mirage/lib/ before the standard build_py runs."""
-    def run(self):
-        lib_dir = path.join("python", "mirage", "lib")
-        os.makedirs(lib_dir, exist_ok=True)
-        for so_path in [
-            path.join("build", "abstract_subexpr", "release", "libabstract_subexpr.so"),
-            path.join("build", "formal_verifier", "release", "libformal_verifier.so"),
-        ]:
-            if path.exists(so_path):
-                shutil.copy2(so_path, lib_dir)
-        super().run()
-
-setup_args = {}
-
 # Create requirements list from requirements.txt
 with open(Path(__file__).parent / "requirements.txt", "r") as reqs_file:
     requirements = reqs_file.read().strip().split("\n")
@@ -265,20 +152,14 @@ INCLUDE_BASE = "python/mirage/include"
 @contextmanager
 def copy_include():
     if not path.exists(INCLUDE_BASE):
-        src_dirs = ["deps/cutlass/include", "deps/json/include"]
+        src_dirs = ["deps/cutlass/include", "deps/cutlass/tools/util/include", "deps/json/include"]
         for src_dir in src_dirs:
             shutil.copytree(src_dir, path.join(INCLUDE_BASE, src_dir))
-        # copy mirage/transpiler/runtime/*
-        # to python/mirage/include/mirage/transpiler/runtime/*
-        # instead of python/mirage/include/include/mirage/transpiler/runtime/*
+        # Package the headers used by MPK runtime compilation.
         include_mirage_dirs = [
-            "include/mirage/transpiler/runtime",
-            "include/mirage/triton_transpiler/runtime",
             "include/mirage/persistent_kernel",
         ]
         include_mirage_dsts = [
-            path.join(INCLUDE_BASE, "mirage/transpiler/runtime"),
-            path.join(INCLUDE_BASE, "mirage/triton_transpiler/runtime"),
             path.join(INCLUDE_BASE, "mirage/persistent_kernel"),
         ]
         for include_mirage_dir, include_mirage_dst in zip(
@@ -288,13 +169,15 @@ def copy_include():
 
         config_h_src = path.join(
             mirage_path, "include/mirage/config.h"
-        )  # Needed by transpiler/runtime/threadblock/utils.h
+        )  # Needed by persistent_kernel/runtime_header.h
         config_h_dst = path.join(INCLUDE_BASE, "mirage/config.h")
         shutil.copy(config_h_src, config_h_dst)
-        yield True
+        try:
+            yield True
+        finally:
+            shutil.rmtree(INCLUDE_BASE)
     else:
         yield False
-    shutil.rmtree(INCLUDE_BASE)
 
 
 with copy_include() as copied:
@@ -308,13 +191,12 @@ with copy_include() as copied:
     setup(
         name="mirage-project",
         version=__version__,
-        description="Mirage: A Multi-Level Superoptimizer for Tensor Algebra",
+        description="Mirage Persistent Kernel: CUDA task graph compiler and runtime",
         zip_safe=False,
         install_requires=requirements,
         packages=find_packages(where="python"),
         package_dir={"": "python"},
-        package_data={"mirage": ["lib/*.so"]},
-        cmdclass={"build_py": build_py},
+        package_data={"mirage": ["*.pyi"]},
         url="https://github.com/mirage-project/mirage",
         ext_modules=config_cython(),
         include_package_data=True,

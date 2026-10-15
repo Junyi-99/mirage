@@ -66,8 +66,8 @@ jobs:
           CUDA_MINOR=$(echo "${{ matrix.cuda }}" | cut -d. -f2)
           CUDA_LIB="/usr/local/cuda-${CUDA_MAJOR}.${CUDA_MINOR}/lib64"
 
-          # Add CUDA and Z3 library paths so auditwheel can find shared libs
-          export LD_LIBRARY_PATH="${Z3_LIB_DIR}:${CUDA_LIB}:${LD_LIBRARY_PATH:-}"
+          # Add CUDA library paths so auditwheel can find shared libs
+          export LD_LIBRARY_PATH="${CUDA_LIB}:${LD_LIBRARY_PATH:-}"
 
           mkdir -p dist/
           for whl in raw-dist/*.whl; do

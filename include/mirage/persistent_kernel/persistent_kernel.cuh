@@ -975,10 +975,12 @@ __device__ __forceinline__ void execute_worker(RuntimeConfig config) {
 
 #ifdef MPK_ENABLE_PROFILING
   PROFILER_CLOSURE_PARAMS_DECL;
-  PROFILER_INIT(static_cast<uint64_t *>(config.profiler_buffer),
-                0,
-                1,
-                (threadIdx.x % WORKER_NUM_THREADS == 0));
+  PROFILER_INIT_LAYOUT(
+      static_cast<uint64_t *>(config.profiler_buffer), 0, 1,
+      (threadIdx.x % WORKER_NUM_THREADS == 0), tb::get_block_idx(),
+      config.num_workers +
+          (config.num_local_schedulers + config.num_remote_schedulers) /
+              SCHEDULERS_PER_BLOCK);
 
 #endif
   int const worker_id = blockIdx.x;
@@ -1280,8 +1282,13 @@ __device__ __forceinline__ void execute_scheduler(RuntimeConfig config,
     // Up to 4 scheduler warps share one block but the profiler has one
     // slot per block (num_groups=1).  Only warp 0 writes so events from
     // different warps don't interleave.
-    PROFILER_INIT(
-        static_cast<uint64_t *>(config.profiler_buffer), 0, 1, (warp_id == 0));
+    // Split grids start blockIdx at zero independently. Offset scheduler
+    // IDs past workers; a unified grid already has globally unique IDs.
+    PROFILER_INIT_LAYOUT(
+        static_cast<uint64_t *>(config.profiler_buffer), 0, 1, (warp_id == 0),
+        tb::get_block_idx() +
+            (config.split_worker_scheduler ? config.num_workers : 0),
+        config.num_workers + num_schedulers / SCHEDULERS_PER_BLOCK);
     uint32_t sched_profiling_cnt = 0;
 #endif
 

@@ -47,10 +47,10 @@ jobs:
       - name: Build Mirage from Source
         run: .github/workflows/helpers/build_mirage_from_source.sh
 
-      - name: Run performance test
+      - name: Run MPK regression tests
         run: |
-          tests/ci-tests/run_python_tests.sh before-installation
-          tests/ci-tests/run_python_tests.sh after-installation
+          python -m pip install pytest
+          tests/ci-tests/run_python_tests.sh
         
       # Clear cache to prevent affecting subsequent tests
       - name: Clear cache

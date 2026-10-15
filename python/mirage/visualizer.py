@@ -680,28 +680,3 @@ def handle_graph_data(graph_data, graph_title, output_filename, dot=True, png=Tr
     if png:
         G.render(output_filename, cleanup=True)
         print(f"Graph saved as {output_filename}.png")
-
-
-if __name__ == "__main__":
-    file_name = "mirage_search_checkpoint.json"
-    with open(file_name) as f:
-        data = json.load(f)
-
-    if isinstance(data, list):
-        if all(isinstance(item, list) for item in data):
-            for idx, graph_list in enumerate(data):
-                handle_graph_data(
-                    graph_list,
-                    graph_title=f"Combined graph {idx+1}",
-                    output_filename=f"reframe_outcome/reframe_combined_graph_{idx+1}",
-                )
-        elif all(is_graph_data(item) for item in data):
-            handle_graph_data(
-                data,
-                graph_title="Combined graph",
-                output_filename="reframe_outcome/reframe_combined_graph",
-            )
-        else:
-            print("Invalid data format.")
-    else:
-        print("Invalid data format.")
