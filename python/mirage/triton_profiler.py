@@ -4,6 +4,8 @@ import tempfile
 import os
 import subprocess
 import sys
+import traceback
+from pathlib import Path
 from .core import *
 from typing import List, Tuple, Optional
 from tqdm import tqdm
@@ -24,6 +26,7 @@ class TritonProfiler:
         self.fail_num = 0
         self.cnt = 0
         self.save_codes = save_codes
+        self.log_dir = None
 
     def _generate_profile_code_file(self, graph, target_cc: int) -> Tuple[str, str]:
         """Generate triton code for a graph and save to temp file"""
@@ -54,9 +57,19 @@ class TritonProfiler:
                 main_code = ""
 
             run_kernel_code = f"""
+from tqdm import tqdm
+
+# Keep progress separate from stderr, which the parent saves to a log.
+_progress_fd = os.environ.get("MIRAGE_TRITON_PROGRESS_FD")
+_progress_stream = (os.fdopen(int(_progress_fd), "w", buffering=1, closefd=False)
+                    if _progress_fd is not None else sys.stderr)
+
 def profile_kernel():
     # Warmup iterations
-    for _ in range({self.warmup_iters}):
+    for _ in tqdm(range({self.warmup_iters}),
+                  desc="Graph {self.cnt}: warmup / first compile",
+                  file=_progress_stream, position=1, leave=False,
+                  dynamic_ncols=True, mininterval=0.5):
 {main_code}
     
     # Profile iterations
@@ -64,7 +77,10 @@ def profile_kernel():
     ender = torch.cuda.Event(enable_timing=True)
     torch.cuda.synchronize()
     starter.record()
-    for _ in range({self.profile_iters}):
+    for _ in tqdm(range({self.profile_iters}),
+                  desc="Graph {self.cnt}: profiling",
+                  file=_progress_stream, position=1, leave=False,
+                  dynamic_ncols=True, mininterval=0.5):
 {main_code}
     ender.record()
     torch.cuda.synchronize()
@@ -157,32 +173,53 @@ if __name__ == "__main__":
                 _f.write(final_file)
             return f.name, code, output_shapes
 
-    def _run_profile(self, module_path: str) -> float:
-        """Profile execution time by running the module multiple times with progress bars"""
-        try:
-            process = subprocess.run(
-                [sys.executable, module_path],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+    def _log_path(self) -> Path:
+        if self.log_dir is None:
+            root = Path("work") / "triton-profile"
+            root.mkdir(parents=True, exist_ok=True)
+            self.log_dir = Path(tempfile.mkdtemp(prefix="run-", dir=root))
+        return self.log_dir / f"graph-{self.cnt}.log"
 
-            # Parse the average time from the output
+    def _skip_failed_graph(self) -> None:
+        log_path = self._log_path()
+        with log_path.open("a", encoding="utf-8") as log:
+            traceback.print_exc(file=log)
+        self.fail_num += 1
+        tqdm.write(f"Graph {self.cnt}: skipped — details: {log_path}")
+
+    def _run_profile(self, module_path: str) -> float:
+        """Stream progress separately while saving child diagnostics to disk."""
+        log_path = self._log_path()
+        # This CUDA/Linux backend can inherit a separate descriptor for tqdm,
+        # leaving stderr (including native compiler output) entirely in the log.
+        progress_fd = os.dup(2)
+        try:
+            with log_path.open("w", encoding="utf-8") as log:
+                print(f"Module: {module_path}", file=log, flush=True)
+                process = subprocess.run(
+                    [sys.executable, module_path],
+                    stdout=subprocess.PIPE,
+                    stderr=log,
+                    env={**os.environ, "MIRAGE_TRITON_PROGRESS_FD": str(progress_fd)},
+                    pass_fds=(progress_fd,),
+                    text=True,
+                    check=False,
+                )
+                print(f"\nExit code: {process.returncode}\nStdout:\n{process.stdout}",
+                      file=log)
+            process.check_returncode()
+
             for line in process.stdout.splitlines():
                 if "Average time per iteration" in line:
+                    perf = float(line.split(":")[-1].strip().split(" ")[0])
                     self.success_num += 1
-                    return float(line.split(":")[-1].strip().split(" ")[0])
-
+                    return perf
             raise RuntimeError("Failed to extract timing from output")
-
-        except subprocess.CalledProcessError as e:
-            tqdm.write("\nError Details:")
-            tqdm.write(f"Return code: {e.returncode}")
-            tqdm.write(f"Output: {e.output}")
-            tqdm.write(f"Stdout: {e.stdout}")
-            tqdm.write(f"Stderr: {e.stderr}")
-            self.fail_num += 1
+        except Exception:
+            self._skip_failed_graph()
             return -1
+        finally:
+            os.close(progress_fd)
 
     def profile_graphs(
         self, graphs: List, target_cc: int = 10
@@ -218,6 +255,8 @@ if __name__ == "__main__":
 
                     # Profile the graph with progress description
                     perf = self._run_profile(code_path)
+                    if perf < 0:
+                        continue
 
                     tqdm.write(f"Graph {idx}: {perf:.3f} ms")
 
@@ -230,8 +269,8 @@ if __name__ == "__main__":
                         best_output_shapes = output_shapes
                         tqdm.write(f"New best performance: {perf:.3f} ms")
 
-                except Exception as e:
-                    tqdm.write(f"Error profiling graph {idx}: {str(e)}")
+                except Exception:
+                    self._skip_failed_graph()
                     continue
 
                 finally:

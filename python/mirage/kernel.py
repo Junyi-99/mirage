@@ -572,7 +572,9 @@ class KNGraph:
             if cached_graph is not None:
                 return cached_graph
         if use_cached_graphs:
-            previous_checkpoint = "mirage_cached_mugraphs_{:x}.json".format(
+            # Pre-fp2 caches may contain candidates accepted by concurrent,
+            # unsynchronized GPU fingerprint checks. Do not reuse those graphs.
+            previous_checkpoint = "mirage_cached_mugraphs_fp2_{:x}.json".format(
                 self.cygraph.get_owner_independent_hash()
             )
         else:
@@ -721,6 +723,11 @@ class KNGraph:
                     save_codes=save_codes,
                 )
             )
+            if best_graph is None or best_file_path is None:
+                raise RuntimeError(
+                    "No usable Triton graph was found: search returned no candidates "
+                    "or all candidates failed profiling. See the profiling errors above."
+                )
             # load execute_mugraph func from the generated file
             print(f"Loading the best muGraph from {best_file_path}")
             if not os.path.exists(best_file_path):

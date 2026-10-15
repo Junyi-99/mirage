@@ -17,6 +17,7 @@ from .multigpu import (
   auto_select_allreduce_implementation
 )
 from typing import Optional
+from .type_defs import InitParameters, TensorDescriptor
 from .kv_planner import KVGroupSpec
 
 HARD_CODE = """
@@ -423,12 +424,12 @@ class PersistentKernel:
         max_num_batched_requests: int,
         max_num_batched_tokens: int,
         max_num_pages: int,
-        meta_tensors: dict,
-        profiler_tensor: torch.Tensor,
+        meta_tensors: dict[str, torch.Tensor],
+        profiler_tensor: Optional[torch.Tensor],
         trace_name: str,
-        spec_decode_config: SpecDecodeConfig,
+        spec_decode_config: Optional[SpecDecodeConfig],
         use_cutlass_kernel: bool,
-        eos_token_id: int64 = -1,
+        eos_token_id: int = -1,
         pinned_ring_capacity: int = 0,
         test_mode: bool = False,
         do_sample: bool = False,
@@ -437,8 +438,8 @@ class PersistentKernel:
         top_k: int = 0,
         sampling_seed: int = 42,
         sampling_topk_max: int = 32,
-        kv_groups: list = None,
-        page_size: int = None,
+        kv_groups: Optional[list[KVGroupSpec]] = None,
+        page_size: Optional[int] = None,
         max_tokens_per_request: Optional[int] = None,
     ):
         self.__finalized__ = False
@@ -533,7 +534,7 @@ class PersistentKernel:
         }
         self.allocate_nvshmem_teams = 0
         # determine total number of requests for offline serving
-        self.target_cc = torch.cuda.get_device_properties(0).major * 10 + torch.cuda.get_device_properties(0).minor
+        self.target_cc: int = torch.cuda.get_device_properties(0).major * 10 + torch.cuda.get_device_properties(0).minor
 
         if test_mode:
             # Auto-allocate any meta tensors the test author didn't provide so
@@ -666,7 +667,7 @@ class PersistentKernel:
                     dtype=torch.int32, device=device)
 
     @classmethod
-    def get_default_init_parameters(cls):
+    def get_default_init_parameters(cls) -> InitParameters:
         return {
             "mode": "offline",
             "world_size": 1,
@@ -743,7 +744,9 @@ class PersistentKernel:
                 f"Kernel incompatible with current config:\n  " + "\n  ".join(errors)
             )
 
-    def attach_input(self, torch_tensor: torch.Tensor, name: str = None) -> DTensor:
+    def attach_input(
+        self, torch_tensor: torch.Tensor, name: Optional[str] = None
+    ) -> TensorDescriptor:
         dims = tuple([d for d in torch_tensor.shape])
         strides = tuple([s for s in torch_tensor.stride()])
         # Check layout: row-major (possibly with padded outer strides — supports
@@ -864,12 +867,12 @@ class PersistentKernel:
 
     def rmsnorm_layer(
         self,
-        input: DTensor,
-        weight: DTensor,
-        output: DTensor,
-        grid_dim: tuple,
-        block_dim: tuple,
-    ):
+        input: TensorDescriptor,
+        weight: TensorDescriptor,
+        output: TensorDescriptor,
+        grid_dim: tuple[int, int, int],
+        block_dim: tuple[int, int, int],
+    ) -> None:
         # Currently assume that the input/output are 2D tensors
         assert input.num_dims == 2
         assert output.num_dims == 2
@@ -3206,11 +3209,11 @@ class PersistentKernel:
 
     def compile(
         self,
-        **kwargs,
-    ):
+        *,
+        output_dir: Optional[str] = None,
+        eos_token_id: Optional[int] = None,
+    ) -> None:
         assert not self._is_compiled
-        
-        output_dir = kwargs.get("output_dir", None)
 
         MIRAGE_ROOT, INCLUDE_PATH, DEPS_PATH = get_key_paths()
         if self.mode == "online_notoken" or self.mode == "online" or self.mode == "multi_turn" or self.mode=="online_pinned":
@@ -3425,7 +3428,8 @@ class PersistentKernel:
         profiler_buffer_ptr = (
             self.profiler_tensor.data_ptr() if self.profiler_tensor is not None else 0
         )
-        self.eos_token_id = kwargs.get("eos_token_id", self.eos_token_id)
+        if eos_token_id is not None:
+            self.eos_token_id = eos_token_id
         
         # Build model tensor name/pointer lists for runtime tensor lookup
         model_tensor_names = list(self._model_tensors.keys())

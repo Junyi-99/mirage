@@ -7,6 +7,7 @@ namespace search {
 std::mutex ProbabilisticVerifier::fp_mutex;
 
 ProbabilisticVerifier::ProbabilisticVerifier(kernel::Graph const &input_graph) {
+  std::lock_guard<std::mutex> lock(fp_mutex);
   for (auto const &op : input_graph.operators) {
     op->fingerprint();
   }
@@ -20,6 +21,9 @@ ProbabilisticVerifier::ProbabilisticVerifier(kernel::Graph const &input_graph) {
 }
 
 OutputMatch ProbabilisticVerifier::verify(kernel::Graph const &graph) {
+  // Candidate graphs reuse the device fingerprint buffers. Keep execution and
+  // comparison atomic so another search thread cannot overwrite the results.
+  std::lock_guard<std::mutex> lock(fp_mutex);
 
   int num_outputs = 0;
 

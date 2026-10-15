@@ -22,7 +22,7 @@ def get_shared_memory_capacity(target_cc):
         assert False, "Unsupported compute capacity: {}".format(target_cc)
 
 
-def get_scheduler(sm_cnt, worker):
+def get_scheduler(sm_cnt: int, worker: int) -> int:
     scheduler = 4 * (sm_cnt - worker)
     assert scheduler > 0, "worker count is not compatible with sm count on"
     "the GPU"
@@ -30,7 +30,7 @@ def get_scheduler(sm_cnt, worker):
 
 # This method auto probe GPUs and return the worker and scheduler count for
 # them.
-def get_configurations_from_gpu(rank):
+def get_configurations_from_gpu(rank: int) -> tuple[int, int]:
     # Reference: https://github.com/mirage-project/mirage/issues/354
     props = torch.cuda.get_device_properties(rank)
     sm_cnt = props.multi_processor_count
