@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 
 namespace mirage {
 namespace kernel {
@@ -318,7 +319,7 @@ void from_json(json const &j, Graph &g) {
         break;
       }
       default:
-        assert(false && "Cannot deserialize this operator");
+        throw std::runtime_error("Cannot deserialize this operator");
     }
   }
 }

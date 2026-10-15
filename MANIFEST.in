@@ -4,7 +4,6 @@ include config.cmake
 include CMakeLists.txt
 
 recursive-include include *
-recursive-include cmake *
 recursive-include src *
 
 recursive-include python/mirage/_cython *.pyx *.pxd
@@ -19,6 +18,7 @@ prune deps/cutlass/examples
 prune deps/cutlass/media
 prune deps/cutlass/test
 prune deps/cutlass/tools
+recursive-include deps/cutlass/tools/util/include *
 
 prune deps/json/.github
 prune deps/json/.reuse
@@ -26,3 +26,6 @@ prune deps/json/docs
 prune deps/json/tests
 prune deps/json/tools
 recursive-include python/mirage *.pyi
+
+prune src/search
+global-exclude __pycache__ *.pyc

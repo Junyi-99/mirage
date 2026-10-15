@@ -38,18 +38,11 @@ int const NUM_WARPS_PER_GROUP = 4;
 int const NUM_THREADS_PER_GROUP = NUM_WARPS_PER_GROUP * NUM_THREADS_PER_WARP;
 constexpr int MAX_TMA_DESC_PER_TENSOR = 3;
 
-#if defined(MIRAGE_BACKEND_USE_CUDA) && defined(MIRAGE_BACKEND_USE_NKI)
-#error                                                                         \
-    "Both MIRAGE_BACKEND_USE_CUDA and MIRAGE_BACKEND_USE_NKI are defined. Please define only one backend type."
-#elif defined(MIRAGE_BACKEND_USE_CUDA)
-size_t const MAX_DMEM_SIZE = (size_t)2 * 1024 * 1024 * 1024;    // 2 GB
-size_t const MAX_SMEM_SIZE = 96 * 1024;                         // 96 KB
-#elif defined(MIRAGE_BACKEND_USE_NKI)
-size_t const MAX_DMEM_SIZE = (size_t)32 * 1024 * 1024 * 1024;    // 32 GB
-size_t const MAX_SMEM_SIZE = (size_t)24 * 1024 * 1024;           // 24 MB
-#else
-#error "Please define either MIRAGE_BACKEND_USE_CUDA or MIRAGE_BACKEND_USE_NKI."
+#if !defined(MIRAGE_BACKEND_USE_CUDA)
+#error "MPK requires MIRAGE_BACKEND_USE_CUDA."
 #endif
+size_t const MAX_DMEM_SIZE = (size_t)2 * 1024 * 1024 * 1024; // 2 GB
+size_t const MAX_SMEM_SIZE = 96 * 1024; // 96 KB
 
 // Note that we actually save stensors' fingerprints on GPU device memory
 // so MAX_SMEM_FP_SIZE can be larger than MAX_SMEM_SIZE

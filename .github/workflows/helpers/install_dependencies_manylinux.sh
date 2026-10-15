@@ -74,22 +74,6 @@ dnf install -y libcudnn9-cuda-12 libcudnn9-devel-cuda-12 || \
   echo "WARNING: cuDNN install failed, continuing without it"
 ldconfig
 
-# --- Z3 (install from pip, then expose paths for CMake) ---
-# Pin to match requirements.txt / conda so the wheel links against the same
-# libz3 SONAME the runtime resolves. Leaving this unpinned pulls the latest
-# (e.g. 5.0.0.0 -> SONAME libz3.so.5.0), which then fails to load at import
-# time on environments that install the pinned z3-solver.
-pip install "z3-solver==4.16.0.0"
-Z3_PKG_DIR=$(python -c "import z3, os; print(os.path.dirname(z3.__file__))")
-Z3_LIB_PATH="${Z3_PKG_DIR}/lib/libz3.so"
-Z3_INCLUDE_PATH="${Z3_PKG_DIR}/include"
-
-if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "Z3_LIB_PATH=${Z3_LIB_PATH}" >> "$GITHUB_ENV"
-  echo "Z3_INCLUDE_PATH=${Z3_INCLUDE_PATH}" >> "$GITHUB_ENV"
-  echo "Z3_LIB_DIR=${Z3_PKG_DIR}/lib" >> "$GITHUB_ENV"
-fi
-
 # --- CMake ---
 pip install cmake
 
@@ -112,16 +96,6 @@ if [ -f requirements.txt ]; then
   { grep 'git+' requirements.txt || true; } | while read -r dep; do
     pip install "$dep" || echo "WARNING: Failed to install $dep"
   done
-fi
-
-# --- Rust (needed for tokenizers etc.) ---
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-# shellcheck source=/dev/null
-. "$HOME/.cargo/env"
-
-# Persist cargo PATH for subsequent GitHub Actions steps
-if [ -n "${GITHUB_PATH:-}" ]; then
-  echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 fi
 
 # --- auditwheel and patchelf ---

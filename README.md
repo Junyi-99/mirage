@@ -6,6 +6,8 @@
 
 </div>
 
+> This branch contains MPK only. The standalone tensor-program superoptimizer and its CUDA/Triton/NKI backends have been removed. See [scope and migration](docs/mpk/mpk-only.md).
+
 *Latest News* 🔥
 * [2025/06] We released [Mirage Persistent Kernel (MPK)](https://github.com/mirage-project/mirage/tree/mpk), a compiler and runtime that automatically transforms multi-GPU LLM inference into a high-performance megakernel.
 
@@ -17,7 +19,7 @@
 
 The fastest way to try MPK is to install it directly from source:
 ```bash
-git clone --recursive --branch mpk https://www.github.com/mirage-project/mirage
+git clone --recursive --branch mpk-only https://github.com/Junyi-99/mirage
 cd mirage
 pip install -e . -v
 export MIRAGE_HOME=$(pwd)

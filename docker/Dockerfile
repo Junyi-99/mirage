@@ -33,7 +33,6 @@ RUN /opt/conda/bin/conda install -c anaconda cython
 
 ENV PATH /opt/conda/bin:$PATH
 ENV MIRAGE_HOME /usr/mirage/
-ENV LD_LIBRARY_PATH /usr/mirage/deps/z3/build/:$LD_LIBRARY_PATH
 
 COPY install_mirage.sh /install/install_mirage.sh
 RUN bash /install/install_mirage.sh

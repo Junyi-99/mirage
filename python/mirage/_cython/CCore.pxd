@@ -232,8 +232,6 @@ cdef extern from "mirage/kernel/graph.h" namespace "mirage::kernel":
         int get_num_output_dtensors()
         int get_input_dtensors(CppDTensor** cinputs)
         int get_input_dtensor_shape_and_stride(const CppDTensor *input, int *strides, int *dims)
-        void generate_triton_program(const char *filepath)
-        void generate_cuda_program(const char *filepath)
         size_t get_owner_independent_hash() const
         # Persistent kernel functions
         void attach_torch_tensor(const CppDTensor *input,
@@ -344,76 +342,9 @@ cdef extern from "mirage/threadblock/graph.h" namespace "mirage::threadblock":
         int reduction_dimx
         vector[CppTBOperator*] operators
 
-cdef extern from "mirage/search/search_c.h" namespace "mirage::search_c":
-    ctypedef struct MInt3:
-        int x
-        int y
-        int z
-    ctypedef struct MDim3:
-        unsigned int x
-        unsigned int y
-        unsigned int z
-
-    cdef int cython_search(const CppKNGraph *input_graph,
-                           const char *backend,
-                           int max_num_new_graphs,
-                           CppKNGraph** new_graphs,
-                           vector[MInt3] imaps,
-                           vector[MInt3] omaps,
-                           vector[MDim3] griddims,
-                           vector[MDim3] blockdims,
-                           vector[int] fmaps,
-                           vector[int] franges,
-                           const char * filename,
-                           bool verbose,
-                           const char * default_config,
-                           bool is_formal_verified)
-    
-    cdef void cython_to_json(const CppKNGraph *input_graph,
-                             const char *filename)
-    cdef CppKNGraph *cython_from_json(const char *filename)
-
-cdef extern from "mirage/transpiler/transpile.h" namespace "mirage::transpiler":
-    ctypedef struct TranspilerConfig:
-        int target_cc
-        int num_consumer_wgs
-        int num_producer_wgs;
-        int pipeline_stages;
-        bool profiling;
-        bool enable_online_softmax;
-    ctypedef struct OutputTensorDirective:
-        size_t alloc_size
-        vector[int] shape
-        vector[size_t] strides
-    ctypedef struct TranspileResult:
-        string code
-        size_t buf_size
-        size_t max_smem_size
-        size_t profiler_buf_size
-        vector[OutputTensorDirective] output_directives
-    cdef TranspileResult transpile(const CppKNGraph *graph,
-                       const TranspilerConfig config,
-                       vector[vector[size_t]] input_strides)
-
-cdef extern from "mirage/nki_transpiler/transpile.h" namespace "mirage::nki_transpiler":
-    ctypedef struct NKITranspilerConfig:
-        int target_cc
-    ctypedef struct NKIErrorInfo:
-        vector[string] errors
-    ctypedef struct NKITranspileResult:
-        string code
-        NKIErrorInfo error_state
-    cdef NKITranspileResult transpile(const CppKNGraph *graph,
-                                      const NKITranspilerConfig config)
-
-cdef extern from "mirage/triton_transpiler/transpile.h" namespace "mirage::triton_transpiler":
-    ctypedef struct TritonTranspilerConfig:
-        int target_cc
-    ctypedef struct TritonTranspileResult:
-        string code
-        vector[vector[int]] output_shapes
-    cdef TritonTranspileResult transpile(const CppKNGraph *graph,
-                                         const TritonTranspilerConfig config)
+cdef extern from "mirage/kernel/serialization.h" namespace "mirage::kernel":
+    void cython_to_json(const CppKNGraph *input_graph, const char *filename) except +
+    CppKNGraph *cython_from_json(const char *filename) except +
 
 cdef extern from "mirage/kernel/device_memory_manager.h" namespace "mirage::kernel":
     cdef int cython_set_gpu_device_id(int gpu_id)

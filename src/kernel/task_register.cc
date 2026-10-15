@@ -14,7 +14,7 @@
  */
 #include "mirage/kernel/task_register.h"
 #include "mirage/kernel/operator.h"
-#include "mirage/transpiler/utils.h"
+#include "mirage/utils/codegen.h"
 
 namespace mirage {
 namespace runtime {
@@ -72,7 +72,7 @@ int TaskRegister::register_embedding_task(threadblock::Graph const &bgraph,
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::embedding_kernel<bfloat16, $, $, $>(",
          batch_size,
@@ -113,7 +113,7 @@ int TaskRegister::register_rmsnorm_task(threadblock::Graph const &bgraph,
   assert(input_ops[0]->dtensor.num_dims == 2);
   assert(output_ops[0]->dtensor.dim[0] == input_ops[0]->dtensor.dim[0]);
   assert(output_ops[0]->dtensor.dim[1] == input_ops[0]->dtensor.dim[1]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::rms_norm_impl<bfloat16, $, $>(", batch_size, hidden_dim);
   code.e("    task_desc->input_ptrs[0],");
@@ -161,7 +161,7 @@ int TaskRegister::register_dflash_attention_sm100_task(
   assert(G >= 1);
   assert(num_q_heads % G == 0);
   assert(num_kv_heads % G == 0);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::dflash_attention_sm100<bfloat16, $, $, $, $, $, $, $>(",
          num_q_heads / G,
@@ -205,7 +205,7 @@ int TaskRegister::register_dflash_norm_rope_sm100_task(
   int num_tokens = output_ops[0]->dtensor.dim[0];
   int width = output_ops[0]->dtensor.dim[1];
   int num_heads = width / head_dim;
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e(
       "kernel::dflash_norm_rope_sm100<bfloat16, $, $>(", num_heads, head_dim);
@@ -243,7 +243,7 @@ int TaskRegister::register_dflash_kv_store_sm100_task(
   assert(output_ops[0]->dtensor.num_dims == 4);
   int page_size = output_ops[0]->dtensor.dim[1];
   int num_kv_heads = output_ops[0]->dtensor.dim[2];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e(
       "kernel::dflash_kv_store_sm100<bfloat16, $, $>(", num_kv_heads, head_dim);
@@ -297,7 +297,7 @@ int TaskRegister::register_glm_moe_router_sm100_task(
   assert(output_ops[1]->dtensor.dim[1] == num_rows);
   assert(output_ops[2]->dtensor.dim[0] == num_total + 1);
   assert(bgraph.grid_dim.x == 1);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::glm_moe_router_task_impl<bfloat16, $, $, $, $>(",
          num_routed,
@@ -348,7 +348,7 @@ int TaskRegister::register_inkling_sconv_sm100_task(
   assert(output_ops[0]->dtensor.dim[1] == hidden);
   int G = bgraph.grid_dim.x;
   assert(G >= 1 && hidden % G == 0);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::inkling_sconv_task_impl<bfloat16, $, $, $, $, $, $>(",
          hidden / G,
@@ -401,7 +401,7 @@ int TaskRegister::register_inkling_attention_sm100_task(
   assert(input_ops[5]->dtensor.dim[1] == extent);
   int G = bgraph.grid_dim.x;
   assert(G >= 1 && num_q_heads % G == 0 && num_kv_heads % G == 0);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::inkling_attention_task_impl<bfloat16, $, $, $, $, $, $, $, "
          "$, $>(",
@@ -468,7 +468,7 @@ int TaskRegister::register_inkling_moe_router_sm100_task(
   assert(output_ops[1]->dtensor.dim[1] == num_rows);
   assert(output_ops[2]->dtensor.dim[0] == num_total + 1);
   assert(bgraph.grid_dim.x == 1);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::inkling_moe_router_task_impl<bfloat16, $, $, $, $>(",
          num_routed,
@@ -515,7 +515,7 @@ int TaskRegister::register_rmsnorm_linear_task(threadblock::Graph const &bgraph,
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::norm_linear_task_impl<bfloat16, $, $, $, $>(",
          batch_size,
@@ -564,7 +564,7 @@ int TaskRegister::register_attention_task(threadblock::Graph const &bgraph,
   assert(input_ops[2]->output_tensors[0].num_dims == 4);
   assert(head_dim == input_ops[2]->output_tensors[0].dim[3]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::single_batch_decoding_kernel<bfloat16, $, $, $, $>(",
          num_q_heads / num_kv_heads,
@@ -634,7 +634,7 @@ int TaskRegister::register_paged_attention_task(
   assert(head_dim == input_ops[2]->output_tensors[0].dim[3]);
   int max_tokens = input_ops[0]->dtensor.dim[0];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::multitoken_paged_attention_task_impl<bfloat16, $, $, $, $, "
          "$, $, $, $, $, $>(",
@@ -704,7 +704,7 @@ int TaskRegister::register_single_batch_extend_attention_task(
   assert(head_dim == input_ops[1]->output_tensors[0].dim[3]);
   assert(input_ops[2]->output_tensors[0].num_dims == 4);
   assert(head_dim == input_ops[2]->output_tensors[0].dim[3]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::single_batch_extend_kernel<bfloat16, $, $, $, $, $, $>(",
          num_q_heads / num_kv_heads,
@@ -762,7 +762,7 @@ int TaskRegister::register_silu_mul_task(threadblock::Graph const &bgraph,
   assert(output_ops[0]->dtensor.owner_op->op_type == type::KN_INPUT_OP);
   kn_input_op = static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::silu_mul_task_impl<bfloat16, $, $, $, $>(",
          batch_size,
@@ -811,7 +811,7 @@ int TaskRegister::register_identity_task(threadblock::Graph const &bgraph,
                     .dim[output_ops[0]->output_tensors[0].num_dims - 1];
   // assert(output_size >= bgraph.block_dim.x);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::identity_task_impl<bfloat16, $, $, $, $>(",
          outer_dim_size,
@@ -852,7 +852,7 @@ int TaskRegister::register_silu_mul_linear_with_residual_task(
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::silu_mul_linear_task_impl<bfloat16, $, $, $, $>(",
          batch_size,
@@ -898,7 +898,7 @@ int TaskRegister::register_linear_task(threadblock::Graph const &bgraph,
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::linear_kernel<bfloat16, $, $, $, $>(",
          batch_size,
@@ -954,7 +954,7 @@ int TaskRegister::register_argmax_partial_task(threadblock::Graph const &bgraph,
   int vocab_size =
       params.size() == 2 ? params[1] : num_elements * num_partial_tasks;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::argmax_partial_kernel<bfloat16, $, $, $, $>(",
          batch_size,
@@ -991,7 +991,7 @@ int TaskRegister::register_argmax_reduce_task(threadblock::Graph const &bgraph,
   int batch_size = input_ops[0]->output_tensors[0].dim[0];
   int num_parts = input_ops[0]->output_tensors[0].dim[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::argmax_reduce_kernel<bfloat16, $, $, $>(",
          batch_size,
@@ -1047,7 +1047,7 @@ int TaskRegister::register_reduction_task(threadblock::Graph const &bgraph,
   int output_stride = static_cast<int>(kn_input_op->input_strides[0]);
   assert(input_stride == output_stride);
   // Register reduction kernel
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::reduction_kernel<bfloat16, $, $, $, $, $>(",
          params[0],
@@ -1084,7 +1084,7 @@ int TaskRegister::register_find_ngram_partial_task(
   assert(output_ops[0]->output_tensors[0].num_dims == 2);
   int num_parts = output_ops[0]->output_tensors[0].dim[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::find_ngram_partial_kernel<$, $>(", params[0], num_parts);
   code.e("    task_desc->input_ptrs[0],");
@@ -1116,7 +1116,7 @@ int TaskRegister::register_find_ngram_global_task(
   assert(input_ops[0]->output_tensors[0].num_dims == 2);
   int num_parts = input_ops[0]->output_tensors[0].dim[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::find_ngram_global_kernel<$, $, $>(",
          params[0],
@@ -1149,7 +1149,7 @@ int TaskRegister::register_target_verify_greedy_task(
   assert(input_ops[0]->output_tensors[0].num_dims == 2);
   int num_spec_tokens = input_ops[0]->output_tensors[0].dim[1] - 1;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::target_verify_greedy_kernel<$>(", num_spec_tokens);
   code.e("    task_desc->input_ptrs[0],");
@@ -1188,7 +1188,7 @@ int TaskRegister::register_linear_hopper_task(threadblock::Graph const &bgraph,
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // define TMAs
   constexpr int B = 3;
@@ -1386,7 +1386,7 @@ int TaskRegister::register_paged_attention_hopper_task(
   assert(input_ops[2]->output_tensors[0].num_dims == 4);
   assert(head_dim == input_ops[2]->output_tensors[0].dim[3]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
 
   constexpr int B = 3, M = 3, S = 3;
@@ -1574,7 +1574,7 @@ int TaskRegister::register_rmsnorm_hopper_task(threadblock::Graph const &bgraph,
   assert(input_ops[0]->dtensor.num_dims == 2);
   assert(output_ops[0]->dtensor.dim[0] == input_ops[0]->dtensor.dim[0]);
   assert(output_ops[0]->dtensor.dim[1] == input_ops[0]->dtensor.dim[1]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e(
       "kernel::rms_norm_hopper_impl<bfloat16, $, $>(", batch_size, hidden_dim);
@@ -1622,7 +1622,7 @@ int TaskRegister::register_linear_swapAB_hopper_task(
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // define TMAs
   constexpr int B = 3;
@@ -1783,7 +1783,7 @@ int TaskRegister::register_linear_cutlass_hopper_task(
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
   constexpr int TILE_SIZE = 128;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // NOTE: output_size and batch_size are swapped here
   code.e("auto problem_shape = cute::Shape<cute::Int<$>, cute::Int<$>, "
@@ -1954,7 +1954,7 @@ int TaskRegister::register_silu_mul_hopper_task(
   assert(output_ops[0]->dtensor.owner_op->op_type == type::KN_INPUT_OP);
   kn_input_op = static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::silu_mul_task_impl_hopper<bfloat16, $, $, $, $>(",
          batch_size,
@@ -1993,7 +1993,7 @@ int TaskRegister::register_embedding_hopper_task(
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::embedding_kernel_hopper<bfloat16, $, $, $>(",
          batch_size,
@@ -2052,7 +2052,7 @@ int TaskRegister::register_linear_sm100_task(threadblock::Graph const &bgraph,
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // define MMA
   constexpr int MMA_M = 128;
@@ -2207,7 +2207,7 @@ int TaskRegister::register_splitk_linear_sm100_task(
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // define MMA
   constexpr int MMA_M = 128;
@@ -2395,7 +2395,7 @@ int TaskRegister::register_paged_attention_sm100_task(
   assert(input_ops[2]->output_tensors[0].num_dims == 4);
   assert(head_dim == input_ops[2]->output_tensors[0].dim[3]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Pass Q_LEN_OVERRIDE, TAIL_OFFSET, MAX_TOKENS, ROTARY_DIM, and WINDOW_SIZE
   // explicitly.
@@ -2465,7 +2465,7 @@ int TaskRegister::register_argmax_partial_sm100_task(
   int vocab_size =
       params.size() == 2 ? params[1] : num_elements * num_partial_tasks;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::argmax_partial_sm100_kernel<bfloat16, $, $, $, $>(",
          batch_size,
@@ -2502,7 +2502,7 @@ int TaskRegister::register_argmax_reduce_sm100_task(
   int batch_size = input_ops[0]->output_tensors[0].dim[0];
   int num_parts = input_ops[0]->output_tensors[0].dim[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::argmax_reduce_sm100_kernel<bfloat16, $, $, $>(",
          batch_size,
@@ -2538,7 +2538,7 @@ int TaskRegister::register_sampling_sm100_task(threadblock::Graph const &bgraph,
   int vocab_size = input_ops[0]->output_tensors[0].dim[1];
   int seed = params[0];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::sampling_from_logits_kernel<256, 4, bfloat16, int>(");
   code.e("    static_cast<bfloat16*>(task_desc->input_ptrs[0]),");
@@ -2586,7 +2586,7 @@ int TaskRegister::register_sampling_partial_sm100_task(
   assert(output_ops[0]->output_tensors[0].dim[1] == topk_max + 2);
   assert(output_ops[1]->output_tensors[0].dim[1] == topk_max);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::sampling_partial_sm100_kernel<bfloat16, $, $, $, $, $>(",
          batch_size,
@@ -2640,7 +2640,7 @@ int TaskRegister::register_sampling_reduce_sm100_task(
   assert(input_ops[1]->output_tensors[0].dim[1] ==
          num_partial_tasks * topk_max);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::sampling_reduce_sm100_kernel<bfloat16, $, $, $>(",
          batch_size,
@@ -2685,7 +2685,7 @@ int TaskRegister::register_tensor_init_task(threadblock::Graph const &bgraph,
   output_size = input_ops[0]->output_tensors[0].dim[1];
   // get input stride
   output_stride = input_ops[0]->dtensor.dim[1];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::tensor_init_sm100_task_impl<cute::bfloat16_t, $, $, $>(",
          /*BATCH_SIZE=*/batch_size,
@@ -2716,7 +2716,7 @@ int TaskRegister::register_elementwise_add_sm100_task(
   int batch_size = output_ops[0]->output_tensors[0].dim[0];
   int output_size = output_ops[0]->output_tensors[0].dim[1];
   int output_stride = output_ops[0]->dtensor.dim[1];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::elementwise_add_task_impl<cute::bfloat16_t, $, $, $>(",
          batch_size,
@@ -2747,7 +2747,7 @@ int TaskRegister::register_softmax_gather_sm100_task(
   // input[0] = logits [batch, vocab], input[1] = token_ids [batch, 1]
   int batch_size = input_ops[0]->output_tensors[0].dim[0];
   int vocab_size = input_ops[0]->output_tensors[0].dim[1];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::softmax_gather_task_impl<cute::bfloat16_t, $, $>(",
          batch_size,
@@ -2775,7 +2775,7 @@ int TaskRegister::register_mtp_verify_probabilistic_task(
       output_ops.push_back(static_cast<tb::TBInputOp *>(op));
     }
   }
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::target_verify_probabilistic_kernel<$>(", num_draft_tokens);
   code.e("    task_desc->input_ptrs[0],");   // draft_token_ids
@@ -2794,7 +2794,7 @@ int TaskRegister::register_mtp_float_scatter_task(
   int batch_size = params[0];
   int num_slots = params[1];
   int slot_idx = params[2];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::mtp_float_scatter_kernel<$, $, $>(",
          batch_size,
@@ -2824,7 +2824,7 @@ int TaskRegister::register_prob_extract_sm100_task(
     }
   }
   int batch_size = input_ops[0]->output_tensors[0].dim[0];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::prob_extract_task_impl<$, $, $>(",
          batch_size,
@@ -2854,7 +2854,7 @@ int TaskRegister::register_prob_scatter_sm100_task(
     }
   }
   int batch_size = input_ops[0]->output_tensors[0].dim[0];
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::prob_scatter_task_impl<$, $>(", batch_size, max_positions);
   code.e("    task_desc->input_ptrs[0],");                           // prob
@@ -2902,7 +2902,7 @@ int TaskRegister::register_moe_topk_softmax_sm100_task(
   assert(output_ops[0]->dtensor.owner_op->op_type == type::KN_INPUT_OP);
   kn_input_op = static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // The kernel splits a row of experts across THREADS_PER_ROW = num_experts
   // / VPT lanes, which must be a half or whole warp, with VPT a multiple of
@@ -2975,7 +2975,7 @@ int TaskRegister::register_moe_topk_sigmoid_sm100_task(
          "Number of experts must be divisible by number of groups");
   int experts_per_group = num_experts / num_groups;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::topk_sigmoid_task_impl<cute::bfloat16_t, $, $, $, $, $, $, "
          "$, $>(",
@@ -3053,7 +3053,7 @@ int TaskRegister::register_moe_linear_sm100_task(
   output_stride = static_cast<int>(kn_input_op->input_strides[1]);
   orig_output_size = input_ops[1]->dtensor.dim[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // MoE constant:
   int expert_stride = (w13_linear) ? 10 : 8;
@@ -3273,7 +3273,7 @@ int TaskRegister::register_moe_fp8_sm100_task(threadblock::Graph const &bgraph,
 
   int k_scale = reduction_size / 128; // K/128 scale groups
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
 
   // MMA constants (same as BF16 MoE task)
@@ -3486,7 +3486,7 @@ int TaskRegister::register_moe_silu_mul_task(threadblock::Graph const &bgraph,
   assert(output_ops[0]->dtensor.owner_op->op_type == type::KN_INPUT_OP);
   kn_input_op = static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[1]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::silu_mul_task_impl<bfloat16, $, $, $, $>(",
          batch_size,
@@ -3536,7 +3536,7 @@ int TaskRegister::register_moe_clamped_swiglu_task(
   assert(output_ops[0]->dtensor.owner_op->op_type == type::KN_INPUT_OP);
   kn_input_op = static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[1]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::clamped_swiglu_task_impl<bfloat16, $, $, $, $>(",
          batch_size,
@@ -3594,7 +3594,7 @@ int TaskRegister::register_moe_mul_sum_add_sm100_task(
   assert(output_ops[0]->dtensor.owner_op->op_type == type::KN_INPUT_OP);
   kn_input_op = static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::mul_sum_add_sm100_task_impl<cute::bfloat16_t, $, $, $, $>(",
          /*BATCH_SIZE=*/batch_size,
@@ -3658,7 +3658,7 @@ int TaskRegister::register_moe_linear_sm90_task(
   output_stride = static_cast<int>(kn_input_op->input_strides[1]);
   orig_output_size = input_ops[1]->dtensor.dim[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // MoE constant:
   int const expert_stride = w13_linear ? 5 : 4;
@@ -3825,7 +3825,7 @@ int TaskRegister::register_splitk_linear_swapAB_hopper_task(
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // define TMAs
   constexpr int B = 3;
@@ -3995,7 +3995,7 @@ int TaskRegister::register_paged_attention_split_kv_sm100_task(
   int max_tokens = input_ops[0]->dtensor.dim[0];
   constexpr int SEQ_LEN_PER_BLOCK = 256;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::multitoken_paged_attention_split_kv_task_impl<bfloat16, $, "
          "$, $, $, $, $, "
@@ -4073,7 +4073,7 @@ int TaskRegister::register_paged_attention_split_kv_merge_sm100_task(
   int max_tokens = input_ops[0]->dtensor.dim[0];
   constexpr int SEQ_LEN_PER_BLOCK = 256;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
 
   code.e("kernel::merge_splitkv<bfloat16, $, $, $, $, $, $, "
@@ -4132,7 +4132,7 @@ int TaskRegister::register_mla_decode_sm100_task(
   // grid.y is head group and grid.z is batch (stored in merge_task_offset).
   bool const single_query = (q_len == 1);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Compute kv_len and q_len from page/qo indptrs at runtime.
   // Q_LEN is dynamic: prefill iters have Q_LEN=mbt new tokens, decode has
@@ -4229,7 +4229,7 @@ int TaskRegister::register_mla_reduce_sm100_task(
   int num_head_groups = num_heads / hpb;
   bool const single_query = (q_len == 1);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // PR 651 MLA MTP reduce kernel (256 threads for MPK)
   if (!single_query) {
@@ -4307,7 +4307,7 @@ int TaskRegister::register_mla_prefill_sm100_task(
   // output window before calling it.
 
   (void)seq_len;
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Compute S (total KV length) and Q_LEN (this iteration's chunk length)
   // at runtime. S = pages*page_size + last_page_len, grows as prefill
@@ -4381,7 +4381,7 @@ int TaskRegister::register_mla_prefill_tp8_sm100_task(
   float sm_scale = 1.0f / sqrtf(192.0f);
   float sm_scale_log2 = sm_scale * 1.44269504089f;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::mla_prefill_tp8::mla_prefill_tp8_sm100_task_impl(");
   code.e("    static_cast<const "
@@ -4420,7 +4420,7 @@ int TaskRegister::register_mla_mtp_decode_sm100_task(
   int tps = (kvt + num_splits - 1) / num_splits;
   int single_tile = (tps == 1) ? 1 : 0;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("{");
   code.e("  int bi_ = task_desc->task_metadata.merge_task_offset;");
@@ -4482,7 +4482,7 @@ int TaskRegister::register_mla_mtp_reduce_sm100_task(
   int num_splits = params[2];
   int rd_dv = params[3];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("{");
   code.e("  int bi_ = task_desc->task_metadata.merge_task_offset;");
@@ -4555,7 +4555,7 @@ int TaskRegister::register_paged_attention_split_kv_hopper_task(
   int max_tokens = input_ops[0]->dtensor.dim[0];
   constexpr int SEQ_LEN_PER_BLOCK = 256;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::multitoken_paged_attention_hopper_impl<bfloat16, $, "
          "$, $, $, $, $, "
@@ -4637,7 +4637,7 @@ int TaskRegister::register_nvshmem_allgather_strided_put_task(
   // For this allgather task, input and output share the same stride
   int output_stride = input_stride;
   // Register nvshmem copy task (allgather)
-  mirage::transpiler::CodeKeeper c;
+  mirage::codegen::CodeKeeper c;
   c.inc_indent();
   c.e("size_t event_index = "
       "get_event_position_index(task_desc->trigger_event);");
@@ -4692,7 +4692,7 @@ int TaskRegister::register_nvshmem_tile_allreduce_task(
   // For this allgather task, input and output share the same stride
   int output_stride = input_stride;
   // Register tile allreduce task
-  mirage::transpiler::CodeKeeper c;
+  mirage::codegen::CodeKeeper c;
   c.inc_indent();
   c.e("kernel::nvshmem_tile_allreduce<__nv_bfloat16, $, $, $>(",
       batch_size,
@@ -4748,7 +4748,7 @@ int TaskRegister::register_quantize_fp8_sm100_task(
   // columns in the column-major output layout (= aligned_batch for UE8M0)
   int aligned_batch = scale_ue8m0 ? ((batch_size + 3) / 4) * 4 : 1;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::per_token_group_quantize_fp8_task_impl<$, $, $, $,",
          batch_size,
@@ -4810,7 +4810,7 @@ int TaskRegister::register_linear_fp8_sm100_task(
       static_cast<kn::KNInputOp *>(output_ops[0]->dtensor.owner_op);
   output_stride = static_cast<int>(kn_input_op->input_strides[0]);
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.inc_indent();
 
@@ -4889,7 +4889,7 @@ int TaskRegister::register_mla_kv_gather_sm100_task(
   int d_v = params[1];
   int page_size = params[2];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // k_pe_out is allocated with a padded row stride of 128 (real ROPE dim is
   // 64). Slice the per-request token window before appending/gathering.
@@ -4952,7 +4952,7 @@ int TaskRegister::register_mla_kv_gather_split_sm100_task(
   int group_id = params[3];
   int page_stride_rows = params[4];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // k_pe_out in DeepSeek V3 builder is allocated as [mbt, 128] (padded from
   // ROPE_DIM=64 to MMA_M=128 for SM100 linear alignment). Real rope data is
@@ -5008,7 +5008,7 @@ int TaskRegister::register_mtp_verify_strict_task(
   assert(params.size() == 1);
   int num_draft = params[0];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::target_verify_strict_kernel<$>(", num_draft);
   code.e("    task_desc->input_ptrs[0],");   // draft_token_ids
@@ -5024,7 +5024,7 @@ int TaskRegister::register_mtp_accept_commit_task(
   assert(params.size() == 1);
   int num_draft = params[0];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::mtp_accept_commit_kernel<$>(", num_draft);
   code.e("    task_desc->input_ptrs[0],");   // accepted_count
@@ -5044,7 +5044,7 @@ int TaskRegister::register_mtp_token_scatter_task(
   int num_slots = params[1];
   int slot_idx = params[2];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::mtp_token_scatter_kernel<$, $, $>(",
          batch_size,
@@ -5062,7 +5062,7 @@ int TaskRegister::register_mtp_prepare_verify_task(
   int num_draft = params[0];
   int max_seq_len = params[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e(
       "kernel::mtp_prepare_verify_input_kernel<$, $>(", num_draft, max_seq_len);
@@ -5083,7 +5083,7 @@ int TaskRegister::register_mtp_build_embed_input_task(
   int batch_size = params[0];
   int max_seq_len = params[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e(
       "kernel::mtp_build_embed_input_kernel<$, $>(", batch_size, max_seq_len);
@@ -5104,7 +5104,7 @@ int TaskRegister::register_copy_task(threadblock::Graph const &bgraph,
   int batch_size = params[0];
   int hidden_dim = params[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::copy_layer_kernel<bfloat16, $, $>(", batch_size, hidden_dim);
   code.e("    task_desc->input_ptrs[0],");   // src
@@ -5120,7 +5120,7 @@ int TaskRegister::register_concat_task(threadblock::Graph const &bgraph,
   int hidden_dim = params[1];
   int n = params[2];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Concat N (B,H) inputs (input_ptrs[0..N-1]) along dim 1 → (B, N*H).
   code.e(
@@ -5137,7 +5137,7 @@ int TaskRegister::register_eagle3_d2t_remap_task(
   int batch_size = params[0];
   int draft_vocab_real = params[1];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e(
       "kernel::eagle3_d2t_remap_kernel<$, $>(", batch_size, draft_vocab_real);
@@ -5158,7 +5158,7 @@ int TaskRegister::register_eagle3_commit_task(threadblock::Graph const &bgraph,
   int batch_size = params[1];
   int max_seq_len = params[2];
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("kernel::eagle3_commit_kernel<$, $, $>(", K, batch_size, max_seq_len);
   code.e("    task_desc->input_ptrs[3],"); // tokens_buffer
@@ -5203,7 +5203,7 @@ int TaskRegister::register_mla_mtp_decode_tp2_sm100_task(
   int single_tile = (tps == 1) ? 1 : 0;
   int qpg = (q_len < 2) ? q_len : 2;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("{");
   code.e("  int bi_ = task_desc->task_metadata.request_id;");
@@ -5258,7 +5258,7 @@ int TaskRegister::register_mla_mtp_decode_tp2_reduce_sm100_task(
   int rd_dv = params[3];
   int qpg = (q_len < 2) ? q_len : 2;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Dual-dispatch: pass runtime Q_LEN so reduce early-exit mirrors main.
   code.e("{");
@@ -5298,7 +5298,7 @@ int TaskRegister::register_mla_mtp_decode_tp4_sm100_task(
   int single_tile = (tps == 1) ? 1 : 0;
   int qpg = (q_len < 4) ? q_len : 4;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("{");
   code.e("  int bi_ = task_desc->task_metadata.request_id;");
@@ -5355,7 +5355,7 @@ int TaskRegister::register_mla_mtp_decode_tp4_reduce_sm100_task(
   int rd_dv = params[3];
   int qpg = (q_len < 4) ? q_len : 4;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Dual-dispatch: pass runtime Q_LEN so reduce early-exit mirrors main.
   code.e("{");
@@ -5396,7 +5396,7 @@ int TaskRegister::register_mla_mtp_decode_tp8_sm100_task(
   int single_tile = (tps == 1) ? 1 : 0;
   int qpg = 2;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   code.e("{");
   code.e("  int bi_ = task_desc->task_metadata.request_id;");
@@ -5453,7 +5453,7 @@ int TaskRegister::register_mla_mtp_decode_tp8_reduce_sm100_task(
   int rd_dv = params[3];
   int qpg = 2;
 
-  mirage::transpiler::CodeKeeper code;
+  mirage::codegen::CodeKeeper code;
   code.inc_indent();
   // Dual-dispatch: pass runtime q_len_padded (even-padded runtime Q_LEN).
   code.e("{");

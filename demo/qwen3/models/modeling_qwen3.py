@@ -533,8 +533,6 @@ class Qwen3ForCausalLM(Qwen3PreTrainedModel, GenerationMixin):
     def fuse_weights(self):
         self.model.fuse_weights()
 
-    def superoptimize_kernels(self):
-        self.model.superoptimize_kernels()
 
     @torch.inference_mode()
     def forward(
