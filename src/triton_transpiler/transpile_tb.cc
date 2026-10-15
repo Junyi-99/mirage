@@ -251,6 +251,9 @@ TritonCustomOPTranspileResult
   if (g.forloop_range > 1) {
     code.e("for i in range($):", g.forloop_range);
     code.inc_indent();
+  } else {
+    // Input addressing still refers to i when a single iteration is unrolled.
+    code.e("i = 0");
   }
 
   // Generate code for operators before accum
@@ -388,6 +391,7 @@ TritonCustomOPTranspileResult
                fmt("stensor$", input0.guid),
                op_str,
                fmt("stensor$", input1.guid));
+        break;
       }
       case type::TB_DIV_OP: {
         tb::STensor const &input0 = tb_op->input_tensors.at(0);

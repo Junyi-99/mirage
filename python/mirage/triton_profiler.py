@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import traceback
+import textwrap
 from pathlib import Path
 from .core import *
 from typing import List, Tuple, Optional
@@ -28,6 +29,13 @@ class TritonProfiler:
         self.save_codes = save_codes
         self.log_dir = None
 
+    @staticmethod
+    def _split_program(code: str) -> tuple[str, str]:
+        definitions, separator, main = code.partition('if __name__ == "__main__":')
+        if not separator:
+            raise ValueError("Generated Triton program has no main section")
+        return definitions, textwrap.indent(textwrap.dedent(main).strip(), "        ")
+
     def _generate_profile_code_file(self, graph, target_cc: int) -> Tuple[str, str]:
         """Generate triton code for a graph and save to temp file"""
 
@@ -36,25 +44,7 @@ class TritonProfiler:
             code = result["code"]
             output_shapes = result["output_shapes"]
 
-            code_lines = code.split("\n")
-            main_start = -1
-            kernel_start = -1
-
-            for i, line in enumerate(code_lines):
-                if 'if __name__ == "__main__":' in line:
-                    main_start = i
-                if "@triton.jit" in line and kernel_start == -1:
-                    kernel_start = i
-
-            if main_start != -1:
-                main_code = code_lines[main_start + 1 :]
-                kernel_code = code_lines[kernel_start:main_start]
-                header_code = code_lines[:kernel_start]
-                main_code = "\n".join(
-                    "        " + line.strip() for line in main_code if line.strip()
-                )
-            else:
-                main_code = ""
+            definitions, main_code = self._split_program(code)
 
             run_kernel_code = f"""
 from tqdm import tqdm
@@ -92,11 +82,10 @@ if __name__ == "__main__":
     profile_kernel()
 
 """
-            final_code = (
-                "\n".join(header_code) + "\n".join(kernel_code) + run_kernel_code
-            )
+            final_code = definitions + run_kernel_code
 
             if self.save_codes:
+                Path("generated_codes").mkdir(parents=True, exist_ok=True)
                 with open(f"generated_codes/generated_code_{self.cnt}.py", "w") as _f:
                     _f.write(final_code)
             f.write(final_code)
@@ -121,25 +110,7 @@ def run_with_debug():
             code = result["code"]
             output_shapes = result["output_shapes"]
 
-            code_lines = code.split("\n")
-            main_start = -1
-            kernel_start = -1
-            for i, line in enumerate(code_lines):
-                if 'if __name__ == "__main__":' in line:
-                    main_start = i
-                if "@triton.jit" in line and kernel_start == -1:
-                    kernel_start = i
-
-            if main_start != -1:
-                main_code = code_lines[main_start + 1 :]
-                kernel_code = code_lines[kernel_start:main_start]
-                kernel_name = kernel_code[0].split("(")[0].split(" ")[-1]
-                header_code = code_lines[:kernel_start]
-                main_code = "\n".join(
-                    "        " + line.strip() for line in main_code if line.strip()
-                )
-            else:
-                main_code = ""
+            definitions, main_code = self._split_program(code)
 
             debug_code = """
         print("Debug: Initializing CUDA device")
@@ -161,8 +132,7 @@ if __name__ == "__main__":
 """
             final_file = (
                 header
-                + "\n".join(header_code)
-                + "\n".join(kernel_code)
+                + definitions
                 + error_handling
                 + debug_code
                 + main_code

@@ -18,9 +18,6 @@
 #include "mirage/threadblock/graph.h"
 #include "mirage/transpiler/utils.h"
 
-#define BLOCK_SIZE_X 128
-#define BLOCK_SIZE_Y 1
-#define CEIL_DIV(a, b) (((a) + (b)-1) / (b))
 
 namespace mirage {
 namespace triton_transpiler {
@@ -116,7 +113,10 @@ TritonTranspiler::TritonTranspiler(kernel::Graph const *_graph,
       case KN_REDUCTION_0_OP:
       case KN_REDUCTION_1_OP:
       case KN_REDUCTION_2_OP: {
-        assert(false && "To be implemented");
+        int dim = op->op_type - KN_REDUCTION_0_OP;
+        kernel::DTensor dt = g->reduction(
+            dtensor_inputs.at(0), dim, op->output_tensors.at(0).dim[dim]);
+        dtensor_mapping[op->output_tensors.at(0).guid] = dt;
         break;
       }
       case KN_RMS_NORM_OP: {
@@ -305,8 +305,6 @@ TritonTranspileResult TritonTranspiler::transpile_ugraph() {
   header.e("import torch");
   header.e("import sys");
   header.e("import os");
-  header.e("sys.path.append(os.environ['KERNELS_PATH'])");
-  header.e("from triton_kernels import *");
 
   // Generate execution section
   CodeKeeper exec;
@@ -378,11 +376,11 @@ TritonTranspileResult TritonTranspiler::transpile_ugraph() {
   entrance_func.e(
       "def execute_mugraph($, $):", input_tensor_str, output_tensor_str);
   entrance_func.inc_indent();
-  entrance_func.e("device = torch.device('cuda')");
+  entrance_func.e("device = $.device", input_tensor_names.at(0));
   for (size_t i = 0; i < middle_tensor_names.size(); i++) {
     entrance_func.e(
-        "$ = torch.zeros(($), dtype=torch.float16).to(device=device)",
-        middle_tensor_names[i],
+        "$ = $.new_zeros(($))",
+        middle_tensor_names[i], input_tensor_names.at(0),
         middle_tensor_shapes[i]);
   }
 
@@ -457,20 +455,14 @@ TritonTranspileResult TritonTranspiler::transpile_ugraph() {
         kn::DTensor &input0 = op->input_tensors[0];
         kn::DTensor &input1 = op->input_tensors[1];
         kn::DTensor &output = op->output_tensors[0];
-        int M = CEIL_DIV(input0.dim[0], BLOCK_SIZE_Y);
-        int N = CEIL_DIV(input0.dim[1], BLOCK_SIZE_X);
-
-        std::string grid =
-            fmt("($, $)", M, N); // TODO: Currently only support 2D
-        std::string new_line =
-            fmt("elementwise_binary_kernel[$]($, $, $, $, $, $)",
-                grid,
-                fmt("dtensor$", input0.guid),
-                fmt("dtensor$", input1.guid),
-                fmt("dtensor$", output.guid),
-                M,
-                N,
-                op->op_type);
+        // Unfused operations use PyTorch CUDA for broadcasting and strides.
+        std::string function = op->op_type == KN_ADD_OP ? "add"
+                               : op->op_type == KN_MUL_OP ? "mul"
+                               : op->op_type == KN_DIV_OP ? "div" : "pow";
+        std::string new_line = fmt("$.copy_(torch.$($, $))",
+                                   fmt("dtensor$", output.guid), function,
+                                   fmt("dtensor$", input0.guid),
+                                   fmt("dtensor$", input1.guid));
         exec.e(new_line);
         entrance_func.e(new_line);
         break;
@@ -481,18 +473,11 @@ TritonTranspileResult TritonTranspiler::transpile_ugraph() {
       case KN_SQUARE_OP: {
         kn::DTensor &input = op->input_tensors[0];
         kn::DTensor &output = op->output_tensors[0];
-        int M = CEIL_DIV(input.dim[0], BLOCK_SIZE_Y);
-        int N = CEIL_DIV(input.dim[1], BLOCK_SIZE_X);
-
-        std::string grid =
-            fmt("($, $)", M, N); // TODO: Currently only support 2D
-        std::string new_line = fmt("elementwise_unary_kernel[$]($, $, $, $, $)",
-                                   grid,
-                                   fmt("dtensor$", input.guid),
-                                   fmt("dtensor$", output.guid),
-                                   M,
-                                   N,
-                                   op->op_type);
+        std::string function = op->op_type == KN_EXP_OP ? "exp"
+                               : op->op_type == KN_SQRT_OP ? "sqrt" : "square";
+        std::string new_line = fmt("$.copy_(torch.$($))",
+                                   fmt("dtensor$", output.guid), function,
+                                   fmt("dtensor$", input.guid));
         exec.e(new_line);
         entrance_func.e(new_line);
         break;
@@ -513,17 +498,12 @@ TritonTranspileResult TritonTranspiler::transpile_ugraph() {
         kn::DTensor &input = op->input_tensors[0];
         kn::DTensor &output = op->output_tensors[0];
         int dim = op->op_type - KN_REDUCTION_0_OP;
-        int M = CEIL_DIV(input.dim[0], BLOCK_SIZE_Y);
-        int N = CEIL_DIV(input.dim[1], BLOCK_SIZE_X);
-        std::string grid =
-            fmt("($, $)", M, N); // TODO: Currently only support 2D
-        std::string new_line = fmt("reduce_sum_kernel[$]($, $, $, $, $)",
-                                   grid,
-                                   fmt("dtensor$", input.guid),
-                                   fmt("dtensor$", output.guid),
-                                   M,
-                                   N,
-                                   dim);
+        // Mirage reduces strided groups when the output axis has size > 1.
+        // Splitting that axis into (factor, output_size) preserves this layout.
+        std::string new_line = fmt(
+            "$.copy_($.unflatten($, ($, $)).sum(dim=$))",
+            fmt("dtensor$", output.guid), fmt("dtensor$", input.guid), dim,
+            input.dim[dim] / output.dim[dim], output.dim[dim], dim);
         exec.e(new_line);
         entrance_func.e(new_line);
         break;
